@@ -1,0 +1,34 @@
+
+# Environnement virtuel Python
+crawlervenv/
+venv/
+.venv/
+donnees/
+# Fichiers Python temporaires
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Variables d'environnement et secrets
+.env
+.env.*
+!.env.example
+
+# Outils de développement
+.vscode/
+.idea/
+
+# Journaux
+*.log
+
+# Fichiers temporaires Windows
+Thumbs.db
+Desktop.ini
+
+# Fichiers de test et de couverture
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Résultats générés par le crawler (optionnel)
+# donnees/resultat.json
