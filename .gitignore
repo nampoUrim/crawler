@@ -32,3 +32,4 @@ htmlcov/
 
 # Résultats générés par le crawler (optionnel)
 # donnees/resultat.json
+mansa_musa.json
