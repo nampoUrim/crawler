@@ -1,35 +1,37 @@
 
-# Environnement virtuel Python
+# Python virtual environments
 crawlervenv/
 venv/
 .venv/
+
+# Generated data and local datasets
 donnees/
-# Fichiers Python temporaires
+
+# Python cache and temporary files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Variables d'environnement et secrets
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
 
-# Outils de développement
+# Development tools
 .vscode/
 .idea/
 
-# Journaux
+# Logs
 *.log
 
-# Fichiers temporaires Windows
+# Windows temporary files
 Thumbs.db
 Desktop.ini
 
-# Fichiers de test et de couverture
+# Tests and coverage reports
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Résultats générés par le crawler (optionnel)
-# donnees/resultat.json
+# Generated crawler output
 mansa_musa.json
