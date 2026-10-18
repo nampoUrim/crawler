@@ -1,4 +1,4 @@
-"""Crawler éducatif pour extraire une page web et l'enregistrer en JSON."""
+"""Educational crawler to extract a web page and save it as JSON."""
 
 import argparse
 import json
@@ -12,141 +12,193 @@ import requests
 from bs4 import BeautifulSoup
 
 
-USER_AGENT = "ChronosCrawler/1.0 (crawler educatif; usage personnel)"
+USER_AGENT = "ChronosCrawler/1.0 (educational crawler; personal use)"
 TIMEOUT = 20
 
 
-def normaliser_url(url):
-    """Retire le fragment (#...) et les espaces superflus d'une URL."""
+def normalize_url(url):
+    """Remove the fragment (#...) and surrounding whitespace from a URL."""
     url = (url or "").strip()
     url, _fragment = urldefrag(url)
     return url
 
 
-def extraire_page(url):
-    """Télécharge une page HTTP(S) et renvoie ses données sous forme de dict.
+def extract_page(url):
+    """Download an HTTP(S) page and return its data as a dictionary.
 
-    Renvoie None en cas d'erreur réseau ou si l'URL n'est pas HTTP(S).
+    Return None if a network error occurs or if the URL is not HTTP(S).
     """
-    url = normaliser_url(url)
-    analyse_url = urlparse(url)
-    if analyse_url.scheme not in {"http", "https"} or not analyse_url.netloc:
-        print("Erreur : l'URL doit commencer par http:// ou https://.", file=sys.stderr)
+    url = normalize_url(url)
+    parsed_url = urlparse(url)
+
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        print(
+            "Error: The URL must start with http:// or https://.",
+            file=sys.stderr,
+        )
         return None
 
-    entetes = {
+    headers = {
         "User-Agent": USER_AGENT,
-        "Accept-Language": "fr,en;q=0.8",
+        "Accept-Language": "en,fr;q=0.8",
     }
 
     try:
-        reponse = requests.get(url, headers=entetes, timeout=TIMEOUT)
-        reponse.raise_for_status()
-    except requests.exceptions.RequestException as erreur:
-        print(f"Erreur lors du téléchargement : {erreur}", file=sys.stderr)
+        response = requests.get(url, headers=headers, timeout=TIMEOUT)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as error:
+        print(f"Download error: {error}", file=sys.stderr)
         return None
 
-    soupe = BeautifulSoup(reponse.text, "html.parser")
-    titre = soupe.title.get_text(" ", strip=True) if soupe.title else ""
-    titres_h1 = [
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+
+    h1_titles = [
         element.get_text(" ", strip=True)
-        for element in soupe.find_all("h1")
+        for element in soup.find_all("h1")
         if element.get_text(" ", strip=True)
     ]
 
-    # Sur Wikipédia, on limite l'extraction à l'article principal. Pour les
-    # autres sites, on utilise le corps du document quand il existe.
-    contenu = (
-        soupe.select_one("main#content")
-        or soupe.select_one("main")
-        or soupe.select_one("article")
-        or soupe.body
-        or soupe
+    # On Wikipedia, limit extraction to the main article.
+    # On other websites, use the document body when available.
+    content = (
+        soup.select_one("main#content")
+        or soup.select_one("main")
+        or soup.select_one("article")
+        or soup.body
+        or soup
     )
 
-    paragraphes = []
-    for element in contenu.find_all("p"):
-        texte = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
-        if texte:
-            paragraphes.append(texte)
+    paragraphs = []
 
-    domaine_page = urlparse(reponse.url).netloc.lower()
-    liens = []
-    urls_vues = set()
+    for element in content.find_all("p"):
+        text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
 
-    for element in contenu.find_all("a", href=True):
+        if text:
+            paragraphs.append(text)
+
+    page_domain = urlparse(response.url).netloc.lower()
+
+    links = []
+    seen_urls = set()
+
+    for element in content.find_all("a", href=True):
         href = element.get("href", "").strip()
-        if not href or href.startswith(("#", "javascript:", "mailto:", "tel:", "data:")):
+
+        if not href or href.startswith(
+            ("#", "javascript:", "mailto:", "tel:", "data:")
+        ):
             continue
 
-        url_lien = normaliser_url(urljoin(reponse.url, href))
-        analyse_lien = urlparse(url_lien)
-        if analyse_lien.scheme not in {"http", "https"} or not analyse_lien.netloc:
+        link_url = normalize_url(urljoin(response.url, href))
+        parsed_link = urlparse(link_url)
+
+        if parsed_link.scheme not in {"http", "https"} or not parsed_link.netloc:
             continue
 
-        cle_url = url_lien.lower()
-        if cle_url in urls_vues:
+        url_key = link_url.lower()
+
+        if url_key in seen_urls:
             continue
-        urls_vues.add(cle_url)
 
-        texte_lien = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
-        type_lien = "interne" if analyse_lien.netloc.lower() == domaine_page else "externe"
-        liens.append({"texte": texte_lien, "url": url_lien, "type": type_lien})
+        seen_urls.add(url_key)
 
-    liens_internes = [lien for lien in liens if lien["type"] == "interne"]
-    liens_externes = [lien for lien in liens if lien["type"] == "externe"]
+        link_text = re.sub(
+            r"\s+", " ", element.get_text(" ", strip=True)
+        ).strip()
+
+        link_type = (
+            "internal"
+            if parsed_link.netloc.lower() == page_domain
+            else "external"
+        )
+
+        links.append({
+            "text": link_text,
+            "url": link_url,
+            "type": link_type,
+        })
+
+    internal_links = [link for link in links if link["type"] == "internal"]
+    external_links = [link for link in links if link["type"] == "external"]
 
     return {
-        "version_schema": 1,
-        "url_source": reponse.url,
-        "date_extraction": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "titre": titre,
-        "titres_h1": titres_h1,
-        "paragraphes": paragraphes,
-        "liens": liens,
-        "liens_internes": liens_internes,
-        "liens_externes": liens_externes,
-        "nombre_paragraphes": len(paragraphes),
-        "nombre_liens": len(liens),
-        "nombre_liens_internes": len(liens_internes),
-        "nombre_liens_externes": len(liens_externes),
+        "schema_version": 1,
+        "source_url": response.url,
+        "extraction_date": datetime.now().astimezone().isoformat(
+            timespec="seconds"
+        ),
+        "title": title,
+        "h1_titles": h1_titles,
+        "paragraphs": paragraphs,
+        "links": links,
+        "internal_links": internal_links,
+        "external_links": external_links,
+        "paragraph_count": len(paragraphs),
+        "link_count": len(links),
+        "internal_link_count": len(internal_links),
+        "external_link_count": len(external_links),
     }
 
 
-def nom_fichier_depuis_url(url):
-    """Produit un nom de fichier simple à partir du dernier segment d'URL."""
-    segment = urlparse(url).path.rstrip("/").split("/")[-1] or "page_web"
+def filename_from_url(url):
+    """Generate a simple filename from the last URL path segment."""
+    segment = urlparse(url).path.rstrip("/").split("/")[-1] or "web_page"
     segment = re.sub(r"[^a-zA-Z0-9_-]+", "_", segment).strip("_").lower()
-    return f"{segment or 'page_web'}.json"
+
+    return f"{segment or 'web_page'}.json"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extrait une page web vers un fichier JSON Chronos.")
-    parser.add_argument("url", nargs="?", default="https://en.wikipedia.org/wiki/Mansa_Musa", help="URL HTTP(S) à extraire")
-    parser.add_argument("-o", "--sortie", help="Chemin du fichier JSON de sortie")
+    parser = argparse.ArgumentParser(
+        description="Extract a web page into a Chronos JSON file."
+    )
+
+    parser.add_argument(
+        "url",
+        nargs="?",
+        default="https://en.wikipedia.org/wiki/Mansa_Musa",
+        help="HTTP(S) URL to extract",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Output JSON file path",
+    )
+
     args = parser.parse_args()
 
-    resultat = extraire_page(args.url)
-    if resultat is None:
+    result = extract_page(args.url)
+
+    if result is None:
         raise SystemExit(1)
 
-    chemin_sortie = Path(args.sortie) if args.sortie else Path(nom_fichier_depuis_url(resultat["url_source"]))
-    try:
-        chemin_sortie.parent.mkdir(parents=True, exist_ok=True)
-        with chemin_sortie.open("w", encoding="utf-8") as fichier:
-            json.dump(resultat, fichier, ensure_ascii=False, indent=2)
-            fichier.write("\n")
-    except OSError as erreur:
-        raise SystemExit(f"Impossible d'enregistrer le JSON : {erreur}")
+    output_path = (
+        Path(args.output)
+        if args.output
+        else Path(filename_from_url(result["source_url"]))
+    )
 
-    print("===== RÉSUMÉ DU CRAWL =====")
-    print("URL source :", resultat["url_source"])
-    print("Titre :", resultat["titre"])
-    print("Paragraphes :", resultat["nombre_paragraphes"])
-    print("Liens :", resultat["nombre_liens"])
-    print("Liens internes :", resultat["nombre_liens_internes"])
-    print("Liens externes :", resultat["nombre_liens_externes"])
-    print("Fichier JSON :", chemin_sortie.resolve())
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with output_path.open("w", encoding="utf-8") as file:
+            json.dump(result, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+
+    except OSError as error:
+        raise SystemExit(f"Unable to save the JSON file: {error}")
+
+    print("===== CRAWL SUMMARY =====")
+    print("Source URL:", result["source_url"])
+    print("Title:", result["title"])
+    print("Paragraphs:", result["paragraph_count"])
+    print("Links:", result["link_count"])
+    print("Internal links:", result["internal_link_count"])
+    print("External links:", result["external_link_count"])
+    print("JSON file:", output_path.resolve())
 
 
 if __name__ == "__main__":
